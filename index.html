@@ -280,33 +280,38 @@
             const cropWidth = Math.floor(videoWidth * 0.80);
             const cropHeight = Math.floor(videoHeight * 0.25);
 
-            // Set canvas size to cropped area
-            hiddenCanvas.width = cropWidth;
-            hiddenCanvas.height = cropHeight;
+            // Set canvas size to cropped area with higher resolution for better OCR
+            const scaleFactor = 2;
+            hiddenCanvas.width = cropWidth * scaleFactor;
+            hiddenCanvas.height = cropHeight * scaleFactor;
 
-            // Draw cropped region to canvas
+            // Draw cropped region to canvas with scaling
             ctx.drawImage(
                 video,
                 cropLeft, cropTop, cropWidth, cropHeight,  // Source rectangle
-                0, 0, cropWidth, cropHeight  // Destination rectangle
+                0, 0, cropWidth * scaleFactor, cropHeight * scaleFactor  // Destination rectangle
             );
 
-            // Apply grayscale and contrast enhancement
-            const imageData = ctx.getImageData(0, 0, cropWidth, cropHeight);
+            // Apply grayscale and aggressive contrast enhancement
+            const imageData = ctx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
             const data = imageData.data;
 
             for (let i = 0; i < data.length; i += 4) {
                 // Convert to grayscale using luminosity formula
                 const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
                 
-                // Increase contrast
-                const contrast = 1.5;
+                // Aggressive contrast enhancement
+                const contrast = 2.0;
                 const enhanced = ((gray - 128) * contrast) + 128;
                 const clamped = Math.max(0, Math.min(255, enhanced));
 
-                data[i] = clamped;     // R
-                data[i + 1] = clamped; // G
-                data[i + 2] = clamped; // B
+                // Apply threshold for binarization (black and white only)
+                const threshold = 140;
+                const binary = clamped > threshold ? 255 : 0;
+
+                data[i] = binary;     // R
+                data[i + 1] = binary; // G
+                data[i + 2] = binary; // B
             }
 
             ctx.putImageData(imageData, 0, 0);
@@ -338,7 +343,7 @@
                 
                 status.textContent = 'Reconhecendo texto...';
 
-                // Perform OCR using Tesseract.js
+                // Perform OCR using Tesseract.js with optimized parameters
                 const { data: { text } } = await Tesseract.recognize(
                     imageData,
                     'eng',
@@ -347,6 +352,11 @@
                             if (m.status === 'recognizing text') {
                                 status.textContent = `Reconhecendo... ${Math.round(m.progress * 100)}%`;
                             }
+                        },
+                        parameters: {
+                            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ',
+                            tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
+                            preserve_interword_spaces: '1'
                         }
                     }
                 );
